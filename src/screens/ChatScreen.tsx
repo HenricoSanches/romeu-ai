@@ -38,12 +38,14 @@ import { Colors, Typography, Spacing, Radii } from '../styles/theme';
 interface Props {
   userProfile: UserProfile;
   onResetProfile: () => void;
+  onGoToDashboard?: () => void;
+  onTransactionAdded?: () => void;
 }
 
 const generateId = () => `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 const now = () => new Date().toISOString();
 
-const ChatScreen: React.FC<Props> = ({ userProfile, onResetProfile }) => {
+const ChatScreen: React.FC<Props> = ({ userProfile, onResetProfile, onGoToDashboard, onTransactionAdded }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [financialState, setFinancialState] = useState<FinancialState>({
     balance: userProfile.initialBalance,
@@ -56,20 +58,15 @@ const ChatScreen: React.FC<Props> = ({ userProfile, onResetProfile }) => {
   const flatListRef = useRef<FlatList>(null);
   const isFirstLoad = useRef(true);
 
-  // ─── Load persisted data ───────────────────────────────────────────────────
-
   useEffect(() => {
     const loadData = async () => {
       const [storedMessages, transactions] = await Promise.all([
         loadMessages(),
         loadTransactions(),
       ]);
-
       const state = computeFinancialState(userProfile, transactions);
       setFinancialState(state);
-
       if (storedMessages.length === 0) {
-        // First session: show welcome message
         const welcome: ChatMessage = {
           id: generateId(),
           sender: 'romeu',
@@ -81,22 +78,16 @@ const ChatScreen: React.FC<Props> = ({ userProfile, onResetProfile }) => {
       } else {
         setMessages(storedMessages);
       }
-
       isFirstLoad.current = false;
     };
-
     loadData();
   }, []);
-
-  // ─── Auto-scroll ───────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (messages.length > 0) {
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     }
   }, [messages, isTyping]);
-
-  // ─── Add a message helper ─────────────────────────────────────────────────
 
   const addMessages = useCallback(async (newMsgs: ChatMessage[]) => {
     setMessages((prev) => {
@@ -106,19 +97,14 @@ const ChatScreen: React.FC<Props> = ({ userProfile, onResetProfile }) => {
     });
   }, []);
 
-  // ─── Handle special commands ──────────────────────────────────────────────
-
   const handleSpecialCommand = (text: string, state: FinancialState): string | null => {
     const lower = text.toLowerCase().trim();
-
     if (lower === 'resumo' || lower === 'summary' || lower.includes('resumo do mês')) {
       return generateSummaryResponse(state, userProfile);
     }
-
     if (lower === 'saldo' || lower.includes('qual meu saldo') || lower.includes('ver saldo')) {
       return `💳 Seu saldo atual é ${formatCurrency(state.balance)}.`;
     }
-
     if (lower === 'ajuda' || lower === 'help' || lower === '?') {
       return [
         `🐾 *Como usar o Romeu AI*`,
@@ -134,31 +120,24 @@ const ChatScreen: React.FC<Props> = ({ userProfile, onResetProfile }) => {
         `• *saldo* — ver saldo atual`,
       ].join('\n');
     }
-
     return null;
   };
 
-  // ─── Main message handler ─────────────────────────────────────────────────
-
   const handleSend = async (text: string) => {
-    // Add user message immediately
     const userMsg: ChatMessage = {
       id: generateId(),
       sender: 'user',
       text,
       createdAt: now(),
     };
-
     await addMessages([userMsg]);
     setIsTyping(true);
     setShowQuickActions(false);
 
-    // Simulate Romeu "thinking" (150–600ms)
     const delay = 300 + Math.random() * 300;
     await new Promise((r) => setTimeout(r, delay));
     setIsTyping(false);
 
-    // Check for special commands first
     const specialResponse = handleSpecialCommand(text, financialState);
     if (specialResponse) {
       const romeuMsg: ChatMessage = {
@@ -171,11 +150,8 @@ const ChatScreen: React.FC<Props> = ({ userProfile, onResetProfile }) => {
       return;
     }
 
-    // Try to parse as a financial transaction
     const parseResult = parseMessage(text);
-
     if (parseResult.recognized) {
-      // Create the transaction record
       const tx: Transaction = {
         id: generateId(),
         type: parseResult.type!,
@@ -185,11 +161,10 @@ const ChatScreen: React.FC<Props> = ({ userProfile, onResetProfile }) => {
         description: text,
         createdAt: now(),
       };
-
-      // Persist and recompute state
       const updatedTxs = await appendTransaction(tx);
       const newState = computeFinancialState(userProfile, updatedTxs);
       setFinancialState(newState);
+      onTransactionAdded?.();
 
       const responseText = generateTransactionResponse(parseResult, newState, userProfile);
       const romeuMsg: ChatMessage = {
@@ -201,7 +176,6 @@ const ChatScreen: React.FC<Props> = ({ userProfile, onResetProfile }) => {
       };
       await addMessages([romeuMsg]);
     } else {
-      // Unknown message
       const responseText = generateUnknownResponse(financialState, userProfile);
       const romeuMsg: ChatMessage = {
         id: generateId(),
@@ -213,13 +187,9 @@ const ChatScreen: React.FC<Props> = ({ userProfile, onResetProfile }) => {
     }
   };
 
-  // ─── Handle quick action selection ───────────────────────────────────────
-
   const handleQuickAction = (value: string) => {
-    // For prefilled templates, just send them directly if complete; otherwise let user edit
-    const needsEdit = value.includes('  '); // double space = placeholder
+    const needsEdit = value.includes('  ');
     if (needsEdit) {
-      // TODO: populate input — for now, just show a hint
       const romeuMsg: ChatMessage = {
         id: generateId(),
         sender: 'romeu',
@@ -231,8 +201,6 @@ const ChatScreen: React.FC<Props> = ({ userProfile, onResetProfile }) => {
       handleSend(value);
     }
   };
-
-  // ─── Reset / settings ──────────────────────────────────────────────────────
 
   const handleReset = () => {
     Alert.alert(
@@ -252,11 +220,8 @@ const ChatScreen: React.FC<Props> = ({ userProfile, onResetProfile }) => {
     );
   };
 
-  // ─── Render ───────────────────────────────────────────────────────────────
-
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <RomeuAvatar size={40} />
@@ -272,10 +237,8 @@ const ChatScreen: React.FC<Props> = ({ userProfile, onResetProfile }) => {
         </TouchableOpacity>
       </View>
 
-      {/* Balance Card */}
       <BalanceCard state={financialState} profile={userProfile} />
 
-      {/* Messages */}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.flex}
@@ -291,11 +254,7 @@ const ChatScreen: React.FC<Props> = ({ userProfile, onResetProfile }) => {
           ListFooterComponent={isTyping ? <TypingIndicator /> : null}
           onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
         />
-
-        {/* Quick action chips */}
         {showQuickActions && <QuickActions onSelect={handleQuickAction} />}
-
-        {/* Input bar */}
         <MessageInput onSend={handleSend} loading={isTyping} />
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -303,14 +262,8 @@ const ChatScreen: React.FC<Props> = ({ userProfile, onResetProfile }) => {
 };
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: Colors.bgBase,
-  },
-  flex: {
-    flex: 1,
-  },
-  // ─── Header ──────────────────────────────────────────────────────────────
+  safe: { flex: 1, backgroundColor: Colors.bgBase },
+  flex: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -321,35 +274,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  headerInfo: {
-    gap: 1,
-  },
-  headerName: {
-    color: Colors.textPrimary,
-    fontSize: Typography.fontSizeLG,
-    fontWeight: Typography.fontWeightBold,
-  },
-  headerSub: {
-    color: Colors.textMuted,
-    fontSize: Typography.fontSizeXS,
-  },
-  menuBtn: {
-    padding: Spacing.sm,
-  },
-  menuIcon: {
-    fontSize: 20,
-  },
-  // ─── Messages ────────────────────────────────────────────────────────────
-  messageList: {
-    paddingHorizontal: Spacing.md,
-    paddingTop: Spacing.md,
-    paddingBottom: Spacing.sm,
-  },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  headerInfo: { gap: 1 },
+  headerName: { color: Colors.textPrimary, fontSize: Typography.fontSizeLG, fontWeight: Typography.fontWeightBold },
+  headerSub: { color: Colors.textMuted, fontSize: Typography.fontSizeXS },
+  menuBtn: { padding: Spacing.sm },
+  menuIcon: { fontSize: 20 },
+  messageList: { paddingHorizontal: Spacing.md, paddingTop: Spacing.md, paddingBottom: Spacing.sm },
 });
 
 export default ChatScreen;
