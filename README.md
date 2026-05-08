@@ -12,7 +12,7 @@ A mobile-first personal finance assistant powered by natural language. Built wit
 - 📊 **Monthly summary** — type "resumo" to get a breakdown
 - 🌙 **Dark fintech UI** — deep navy + vibrant violet palette
 - 💾 **Fully offline** — all data stored locally with AsyncStorage
-- 🔄 **Extendable** — drop in a real AI API later without changing the UI
+- 🔄 **Extendable** — drop in a real AI API later without changing the UI/UX
 
 ---
 
