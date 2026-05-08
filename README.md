@@ -63,7 +63,7 @@ cd RomeuAI
 # Install dependencies
 npm install
 
-# Start dev server
+# Start add server
 npx expo start
 
 # Press:
